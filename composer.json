@@ -12,6 +12,11 @@
             "role": "developer"
         }
     ],
+    "autoload": {
+        "psr-4": {
+            "Wizard\\": "src"
+        }
+    }
     "replace": {
         "lucasff/cakephp-wizard": "dev-master",
         "ProLoser/CakePHP-Wizard": "dev-master"
