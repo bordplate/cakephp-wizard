@@ -12,7 +12,12 @@
  * @property SessionHelper $Session
  * @property HtmlHelper $Html
  */
-class WizardHelper extends AppHelper {
+
+namespace Wizard\View\Helper;
+
+use Cake\View\Helper;
+
+class WizardHelper extends Helper {
 	public $helpers = array(
 		'Session',
 		'Html',
@@ -26,7 +31,7 @@ class WizardHelper extends AppHelper {
  * @param string $key optional key to retrieve the existing value
  * @return mixed data at config key (if key is passed)
  */
-	public function config($key = null) {
+	public function config($key = NULL, $value = NULL, $merge = true) {
 		if ($key == null) {
 			return $this->Session->read('Wizard.config');
 		} else {

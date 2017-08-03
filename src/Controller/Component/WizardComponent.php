@@ -14,6 +14,16 @@
  * @writtenby          jaredhoyt
  * @license            http://www.opensource.org/licenses/mit-license.php The MIT License
  */
+
+namespace Wizard\Controller\Component;
+
+use Cake\Controller\Component;
+use Cake\Controller\ComponentRegistry;
+use Cake\Controller\Controller;
+use Cake\Event\Event;
+use Cake\Network\Exception\NotImplementedException;
+use Cake\Utility\Inflector;
+
 class WizardComponent extends Component {
 
 /**
@@ -190,9 +200,9 @@ class WizardComponent extends Component {
  *
  * @access public
  */
-	public function __construct(ComponentCollection $collection, $settings = array()) {
+	public function __construct(ComponentRegistry $collection, $settings = array()) {
 		parent::__construct($collection, $settings);
-		$this->_set($settings);
+		//$this->set($settings);
 	}
 
 /**
@@ -203,12 +213,13 @@ class WizardComponent extends Component {
  * @access public
  * @return void
  */
-	public function initialize(Controller $controller) {
-		$this->controller = $controller;
+	public function initialize(array $config) {
+        $this->controller = $this->_registry->getController();
+        $this->session = $this->controller->request->session();  // This is probably cheating, not checking docs now.
 
-		$this->_sessionKey = $this->controller->Session->check('Wizard.complete') ? 'Wizard.complete' : 'Wizard.' . $controller->name;
+		$this->_sessionKey = $this->session->check('Wizard.complete') ? 'Wizard.complete' : 'Wizard.' . $this->controller->name;
 		$this->_configKey = 'Wizard.config';
-		$this->_branchKey = 'Wizard.branches.' . $controller->name;
+		$this->_branchKey = 'Wizard.branches.' . $this->controller->name;
 	}
 
 /**
@@ -219,7 +230,7 @@ class WizardComponent extends Component {
  *
  * @access public
  */
-	public function startup(Controller $controller) {
+	public function startup(Event $event) {
 		$this->steps = $this->_parseSteps($this->steps);
 
 		$this->config('action', $this->action);
@@ -281,8 +292,8 @@ class WizardComponent extends Component {
  * @access protected
  */
 	protected function _branchType($branch) {
-		if ($this->controller->Session->check("$this->_branchKey.$branch")) {
-			return $this->controller->Session->read("$this->_branchKey.$branch");
+		if ($this->session->check("$this->_branchKey.$branch")) {
+			return $this->session->read("$this->_branchKey.$branch");
 		}
 		return false;
 	}
@@ -297,12 +308,12 @@ class WizardComponent extends Component {
  * @return mixed
  * @access public
  */
-	public function config($name, $value = null) {
+	public function config($key = NULL, $value = NULL, $merge = true) {
 		if ($value == null) {
-			// $this->controller->Session->read("$this->_configKey")
-			return $this->controller->Session->read("$this->_configKey.$name");
+			// $this->session->read("$this->_configKey")
+			return $this->session->read("$this->_configKey.$key");
 		}
-		$this->controller->Session->write("$this->_configKey.$name", $value);
+		$this->session->write("$this->_configKey.$key", $value);
 		return $value;
 	}
 
@@ -341,7 +352,7 @@ class WizardComponent extends Component {
 		}
 
 		if (empty($step)) {
-			if ($this->controller->Session->check('Wizard.complete')) {
+			if ($this->session->check('Wizard.complete')) {
 				if (method_exists($this->controller, '_afterComplete')) {
 					$this->controller->_afterComplete();
 				}
@@ -358,7 +369,9 @@ class WizardComponent extends Component {
 			if ($this->_validStep($step)) {
 				$this->_setCurrentStep($step);
 
-				if (!empty($this->controller->data) && !isset($this->controller->request->data['Previous'])) {
+				$data = $this->controller->request->getData();
+
+				if (!empty($data) && !isset($this->controller->request->data['Previous'])) {
 					$processCallback = '_' . Inflector::variable('process_' . $this->_currentStep);
 					if (method_exists($this->controller, $processCallback)) {
 						$proceed = $this->controller->$processCallback();
@@ -380,17 +393,17 @@ class WizardComponent extends Component {
 							}
 							$this->redirect(current($this->steps));
 						} else {
-							$this->controller->Session->write('Wizard.complete', $this->read());
+							$this->session->write('Wizard.complete', $this->read());
 							$this->reset();
 							$this->controller->redirect(array('action' => $this->action));
 						}
 					}
 				} elseif (isset($this->controller->request->data['Previous']) && prev($this->steps)) {
 					$this->redirect(current($this->steps));
-				} elseif ($this->controller->Session->check("$this->_sessionKey._draft.current")) {
+				} elseif ($this->session->check("$this->_sessionKey._draft.current")) {
 					$this->controller->data = $this->read('_draft.current.data');
-					$this->controller->Session->delete("$this->_sessionKey._draft.current");
-				} elseif ($this->controller->Session->check("$this->_sessionKey.$this->_currentStep")) {
+					$this->session->delete("$this->_sessionKey._draft.current");
+				} elseif ($this->session->check("$this->_sessionKey.$this->_currentStep")) {
 					$this->controller->data = $this->read($this->_currentStep);
 				}
 
@@ -426,7 +439,7 @@ class WizardComponent extends Component {
  */
 	protected function _getExpectedStep() {
 		foreach ($this->steps as $step) {
-			if (!$this->controller->Session->check("$this->_sessionKey.$step")) {
+			if (!$this->session->check("$this->_sessionKey.$step")) {
 				$this->config('expectedStep', $step);
 				return $step;
 			}
@@ -440,8 +453,8 @@ class WizardComponent extends Component {
  * @access public
  */
 	public function reset() {
-		$this->controller->Session->delete($this->_branchKey);
-		$this->controller->Session->delete($this->_sessionKey);
+		$this->session->delete($this->_branchKey);
+		$this->session->delete($this->_sessionKey);
 	}
 
 /**
@@ -456,9 +469,9 @@ class WizardComponent extends Component {
  */
 	public function read($key = null) {
 		if ($key == null) {
-			return $this->controller->Session->read($this->_sessionKey);
+			return $this->session->read($this->_sessionKey);
 		} else {
-			$wizardData = $this->controller->Session->read("$this->_sessionKey.$key");
+			$wizardData = $this->session->read("$this->_sessionKey.$key");
 			return !empty($wizardData) ? $wizardData : null;
 		}
 	}
@@ -540,7 +553,7 @@ class WizardComponent extends Component {
 		if (is_null($data)) {
 			$data = $this->controller->request->data;
 		}
-		$this->controller->Session->write("$this->_sessionKey.$step", $data);
+		$this->session->write("$this->_sessionKey.$step", $data);
 	}
 
 /**
@@ -576,8 +589,8 @@ class WizardComponent extends Component {
 	public function branch($name, $skip = false) {
 		$branches = array();
 
-		if ($this->controller->Session->check($this->_branchKey)) {
-			$branches = $this->controller->Session->read($this->_branchKey);
+		if ($this->session->check($this->_branchKey)) {
+			$branches = $this->session->read($this->_branchKey);
 		}
 
 		if (isset($branches[$name])) {
@@ -587,7 +600,7 @@ class WizardComponent extends Component {
 		$value = $skip ? 'skip' : 'branch';
 		$branches[$name] = $value;
 
-		$this->controller->Session->write($this->_branchKey, $branches);
+		$this->session->write($this->_branchKey, $branches);
 	}
 
 /**
@@ -615,7 +628,7 @@ class WizardComponent extends Component {
  * @access public
  */
 	public function restore($data = array()) {
-		$this->controller->Session->write($this->_sessionKey, $data);
+		$this->session->write($this->_sessionKey, $data);
 	}
 
 /**
@@ -640,7 +653,7 @@ class WizardComponent extends Component {
 		if ($key == null) {
 			return;
 		} else {
-			$this->controller->Session->delete("$this->_sessionKey.$key");
+			$this->session->delete("$this->_sessionKey.$key");
 			return;
 		}
 	}
@@ -653,7 +666,7 @@ class WizardComponent extends Component {
  * @access public
  */
 	public function unbranch($branch) {
-		$this->controller->Session->delete("$this->_branchKey.$branch");
+		$this->session->delete("$this->_branchKey.$branch");
 	}
         
 
